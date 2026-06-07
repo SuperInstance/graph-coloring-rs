@@ -1,0 +1,11 @@
+[package]
+name = "graph-coloring-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["SuperInstance"]
+description = "Graph coloring algorithms: greedy, backtracking, DSATUR, Welsh-Powell, chromatic number in pure Rust"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/SuperInstance/graph-coloring-rs"
+keywords = ["graph", "coloring", "chromatic", "dsatur", "algorithm"]
+categories = ["algorithms", "mathematics", "data-structures"]
+readme = "README.md"
