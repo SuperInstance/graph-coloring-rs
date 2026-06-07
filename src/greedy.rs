@@ -1,142 +1,134 @@
-//! Greedy sequential coloring.
+//! Greedy graph coloring algorithm.
+//!
+//! Colors vertices in order 0, 1, 2, ..., assigning the smallest available color
+//! that doesn't conflict with already-colored neighbors.
 
-use crate::graph::{Coloring, Graph, color_count};
+use crate::graph::{Coloring, Graph};
 
-/// Color the graph using the greedy (sequential) algorithm.
+/// Perform greedy coloring on the graph.
 ///
-/// Processes vertices in order `0, 1, 2, ...` and assigns each vertex
-/// the smallest available color not used by its neighbors.
+/// Colors vertices in natural order (0, 1, 2, ...).
+/// For each vertex, assigns the smallest non-negative color not used by its neighbors.
 ///
-/// Returns a valid coloring.
+/// # Example
+/// ```
+/// use graph_coloring_rs::graph::Graph;
+/// use graph_coloring_rs::greedy::greedy_coloring;
+///
+/// let g = Graph::cycle(5);
+/// let coloring = greedy_coloring(&g);
+/// assert!(coloring.is_valid(&g));
+/// assert_eq!(coloring.num_colors(), 3); // C5 needs 3 colors
+/// ```
 pub fn greedy_coloring(graph: &Graph) -> Coloring {
-    let n = graph.vertex_count();
-    let mut coloring = vec![0; n];
-    let mut used = vec![false; n + 1];
-
-    for v in 0..n {
-        // Mark colors used by neighbors
-        for &u in graph.neighbors(v) {
-            if u < v {
-                used[coloring[u]] = true;
-            }
-        }
-        // Find smallest available color
-        let mut c = 0;
-        while used[c] {
-            c += 1;
-        }
-        coloring[v] = c;
-        // Reset used
-        for &u in graph.neighbors(v) {
-            if u < v {
-                used[coloring[u]] = false;
-            }
-        }
-    }
-
-    coloring
+    greedy_coloring_with_order(graph, (0..graph.vertex_count()).collect())
 }
 
-/// Color the graph using greedy with a custom vertex ordering.
+/// Perform greedy coloring with a specified vertex ordering.
 ///
-/// Processes vertices in the given order.
-pub fn greedy_coloring_ordered(graph: &Graph, order: &[usize]) -> Coloring {
+/// # Arguments
+/// * `graph` - The graph to color
+/// * `order` - The order in which to process vertices
+pub fn greedy_coloring_with_order(graph: &Graph, order: Vec<usize>) -> Coloring {
     let n = graph.vertex_count();
-    let mut coloring = vec![0; n];
+    let mut colors = vec![None; n];
     let mut used = vec![false; n + 1];
 
-    for &v in order {
+    for v in order {
+        // Mark colors used by already-colored neighbors
         for &u in graph.neighbors(v) {
-            if coloring[u] > 0 || u == order[0] {
-                // Check if u was already colored (before v in order)
-                let u_pos = order.iter().position(|&x| x == u).unwrap();
-                let v_pos = order.iter().position(|&x| x == v).unwrap();
-                if u_pos < v_pos {
-                    used[coloring[u]] = true;
-                }
+            if let Some(c) = colors[u] {
+                used[c] = true;
             }
         }
-        let mut c = 0;
-        while used[c] {
-            c += 1;
-        }
-        coloring[v] = c;
+
+        // Find the smallest available color
+        let color = used.iter().position(|&u| !u).unwrap();
+        colors[v] = Some(color);
+
+        // Reset used array
         for &u in graph.neighbors(v) {
-            used[coloring[u]] = false;
+            if let Some(c) = colors[u] {
+                used[c] = false;
+            }
         }
     }
 
-    coloring
-}
-
-/// Greedy coloring with vertex ordering, returns number of colors used.
-pub fn greedy_num_colors(graph: &Graph) -> usize {
-    color_count(&greedy_coloring(graph))
+    Coloring::new(colors.iter().map(|c| c.unwrap_or(0)).collect())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::is_valid_coloring;
 
     #[test]
-    fn test_greedy_complete_graph() {
+    fn test_greedy_empty_graph() {
+        let g = Graph::new(0);
+        let c = greedy_coloring(&g);
+        assert!(c.is_valid(&g));
+    }
+
+    #[test]
+    fn test_greedy_single_vertex() {
+        let g = Graph::new(1);
+        let c = greedy_coloring(&g);
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 1);
+    }
+
+    #[test]
+    fn test_greedy_k4() {
         let g = Graph::complete(4);
         let c = greedy_coloring(&g);
-        assert!(is_valid_coloring(&g, &c));
-        assert_eq!(color_count(&c), 4); // K4 needs 4 colors
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 4);
     }
 
     #[test]
     fn test_greedy_bipartite() {
         let g = Graph::complete_bipartite(3, 3);
         let c = greedy_coloring(&g);
-        assert!(is_valid_coloring(&g, &c));
-        assert_eq!(color_count(&c), 2); // Bipartite needs 2
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 2);
     }
 
     #[test]
     fn test_greedy_cycle_even() {
         let g = Graph::cycle(4);
         let c = greedy_coloring(&g);
-        assert!(is_valid_coloring(&g, &c));
-        assert_eq!(color_count(&c), 2);
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 2);
     }
 
     #[test]
     fn test_greedy_cycle_odd() {
         let g = Graph::cycle(5);
         let c = greedy_coloring(&g);
-        assert!(is_valid_coloring(&g, &c));
-        assert_eq!(color_count(&c), 3); // Odd cycle needs 3
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 3);
     }
 
     #[test]
     fn test_greedy_path() {
         let g = Graph::path(5);
         let c = greedy_coloring(&g);
-        assert!(is_valid_coloring(&g, &c));
-        assert_eq!(color_count(&c), 2);
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 2);
     }
 
     #[test]
-    fn test_greedy_empty() {
-        let g = Graph::new(0);
+    fn test_greedy_no_edges() {
+        let g = Graph::new(10);
         let c = greedy_coloring(&g);
-        assert!(c.is_empty());
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 1);
     }
 
     #[test]
-    fn test_greedy_single() {
-        let g = Graph::new(1);
-        let c = greedy_coloring(&g);
-        assert!(is_valid_coloring(&g, &c));
-        assert_eq!(color_count(&c), 1);
-    }
-
-    #[test]
-    fn test_greedy_num_colors() {
-        let g = Graph::complete(3);
-        assert_eq!(greedy_num_colors(&g), 3);
+    fn test_greedy_custom_order() {
+        let g = Graph::complete(4);
+        let c = greedy_coloring_with_order(&g, vec![3, 2, 1, 0]);
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 4);
     }
 }

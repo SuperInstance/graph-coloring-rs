@@ -1,112 +1,161 @@
-//! DSATUR (Degree of SATURation) heuristic coloring.
+//! DSATUR (Degree of SATURation) graph coloring algorithm.
+//!
+//! DSATUR is a heuristic that colors vertices by choosing the uncolored vertex
+//! with the highest saturation degree (number of distinct colors among its neighbors),
+//! breaking ties by choosing the vertex with the highest degree.
 
-use crate::graph::{Coloring, Graph, color_count};
+use crate::graph::{Coloring, Graph};
 
-/// Color the graph using the DSATUR algorithm.
+/// Perform DSATUR coloring on the graph.
 ///
-/// At each step, selects the uncolored vertex with the highest saturation degree
-/// (number of distinct colors among its neighbors). Breaks ties by choosing
-/// the vertex with the highest degree.
+/// This heuristic often produces optimal or near-optimal colorings.
 ///
-/// Often produces optimal or near-optimal colorings.
+/// # Example
+/// ```
+/// use graph_coloring_rs::graph::Graph;
+/// use graph_coloring_rs::dsatur::dsatur_coloring;
+///
+/// let g = Graph::cycle(5);
+/// let coloring = dsatur_coloring(&g);
+/// assert!(coloring.is_valid(&g));
+/// ```
 pub fn dsatur_coloring(graph: &Graph) -> Coloring {
     let n = graph.vertex_count();
     if n == 0 {
-        return vec![];
+        return Coloring::new(vec![]);
     }
-    let mut coloring = vec![None; n];
-    let mut sat_degree = vec![0usize; n]; // Number of distinct neighbor colors
-    let mut neighbor_colors: Vec<Vec<bool>> = vec![vec![false; n + 1]; n];
-    let mut colored = 0;
 
-    while colored < n {
-        // Pick vertex with highest saturation, break ties by degree
-        let v = (0..n)
-            .filter(|&v| coloring[v].is_none())
-            .max_by_key(|&v| (sat_degree[v], graph.degree(v)))
-            .unwrap();
+    let mut colors = vec![0; n];
+    let mut colored = vec![false; n];
 
-        // Find smallest available color
-        let mut c = 0;
-        while neighbor_colors[v][c] {
-            c += 1;
-        }
-        coloring[v] = Some(c);
+    // Find vertex with maximum degree to start
+    let first = (0..n).max_by_key(|&v| graph.degree(v)).unwrap();
+    colors[first] = 0;
+    colored[first] = true;
 
-        // Update saturation degrees of neighbors
-        for &u in graph.neighbors(v) {
-            if coloring[u].is_none() && !neighbor_colors[u][c] {
-                neighbor_colors[u][c] = true;
-                sat_degree[u] += 1;
+    for _ in 1..n {
+        // Compute saturation degree for each uncolored vertex
+        let mut best_vertex = 0;
+        let mut best_saturation = 0;
+        let mut best_degree = 0;
+
+        for v in 0..n {
+            if colored[v] {
+                continue;
+            }
+
+            let saturation = saturation_degree(graph, &colors, &colored, v);
+            let degree = graph.degree(v);
+
+            if saturation > best_saturation
+                || (saturation == best_saturation && degree > best_degree)
+            {
+                best_saturation = saturation;
+                best_degree = degree;
+                best_vertex = v;
             }
         }
 
-        colored += 1;
+        // Color the best vertex with the smallest available color
+        let color = smallest_available_color(graph, &colors, &colored, best_vertex);
+        colors[best_vertex] = color;
+        colored[best_vertex] = true;
     }
 
-    coloring.into_iter().map(|c| c.unwrap()).collect()
+    Coloring::new(colors)
 }
 
-/// DSATUR coloring, returns number of colors used.
-pub fn dsatur_num_colors(graph: &Graph) -> usize {
-    color_count(&dsatur_coloring(graph))
+/// Compute the saturation degree of a vertex: the number of distinct colors
+/// used by its already-colored neighbors.
+fn saturation_degree(graph: &Graph, colors: &[usize], colored: &[bool], v: usize) -> usize {
+    let mut neighbor_colors = std::collections::HashSet::new();
+    for &u in graph.neighbors(v) {
+        if colored[u] {
+            neighbor_colors.insert(colors[u]);
+        }
+    }
+    neighbor_colors.len()
+}
+
+/// Find the smallest available color for vertex `v`.
+fn smallest_available_color(
+    graph: &Graph,
+    colors: &[usize],
+    colored: &[bool],
+    v: usize,
+) -> usize {
+    let n = graph.vertex_count();
+    let mut used = vec![false; n];
+
+    for &u in graph.neighbors(v) {
+        if colored[u] {
+            used[colors[u]] = true;
+        }
+    }
+
+    let mut color = 0;
+    while used[color] {
+        color += 1;
+    }
+    color
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{is_valid_coloring, Graph};
 
     #[test]
-    fn test_dsatur_complete() {
-        let g = Graph::complete(5);
+    fn test_dsatur_empty() {
+        let g = Graph::new(0);
         let c = dsatur_coloring(&g);
-        assert!(is_valid_coloring(&g, &c));
-        assert_eq!(color_count(&c), 5);
+        assert!(c.is_valid(&g));
+    }
+
+    #[test]
+    fn test_dsatur_single() {
+        let g = Graph::new(1);
+        let c = dsatur_coloring(&g);
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 1);
+    }
+
+    #[test]
+    fn test_dsatur_k4() {
+        let g = Graph::complete(4);
+        let c = dsatur_coloring(&g);
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 4);
     }
 
     #[test]
     fn test_dsatur_bipartite() {
-        let g = Graph::complete_bipartite(3, 4);
+        let g = Graph::complete_bipartite(3, 3);
         let c = dsatur_coloring(&g);
-        assert!(is_valid_coloring(&g, &c));
-        assert_eq!(color_count(&c), 2);
-    }
-
-    #[test]
-    fn test_dsatur_cycle_even() {
-        let g = Graph::cycle(6);
-        let c = dsatur_coloring(&g);
-        assert!(is_valid_coloring(&g, &c));
-        assert_eq!(color_count(&c), 2);
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 2);
     }
 
     #[test]
     fn test_dsatur_cycle_odd() {
         let g = Graph::cycle(5);
         let c = dsatur_coloring(&g);
-        assert!(is_valid_coloring(&g, &c));
-        assert_eq!(color_count(&c), 3);
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 3);
     }
 
     #[test]
-    fn test_dsatur_path() {
-        let g = Graph::path(10);
+    fn test_dsatur_cycle_even() {
+        let g = Graph::cycle(4);
         let c = dsatur_coloring(&g);
-        assert!(is_valid_coloring(&g, &c));
-        assert_eq!(color_count(&c), 2);
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 2);
     }
 
     #[test]
-    fn test_dsatur_empty() {
-        let g = Graph::new(0);
+    fn test_dsatur_no_edges() {
+        let g = Graph::new(10);
         let c = dsatur_coloring(&g);
-        assert!(c.is_empty());
-    }
-
-    #[test]
-    fn test_dsatur_num_colors() {
-        let g = Graph::complete(3);
-        assert_eq!(dsatur_num_colors(&g), 3);
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 1);
     }
 }

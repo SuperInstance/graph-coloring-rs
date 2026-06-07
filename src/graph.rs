@@ -1,16 +1,16 @@
-//! Graph representation as an adjacency list.
+//! Graph representation for coloring algorithms.
 
-/// An undirected graph represented as an adjacency list.
-///
-/// Vertices are numbered `0..n`. Edges are stored symmetrically.
-#[derive(Clone, Debug)]
+/// A simple undirected graph represented as an adjacency list.
+#[derive(Debug, Clone)]
 pub struct Graph {
+    /// Number of vertices.
     n: usize,
+    /// Adjacency list: `adj[v]` contains all neighbors of vertex `v`.
     adj: Vec<Vec<usize>>,
 }
 
 impl Graph {
-    /// Create an empty graph with `n` vertices and no edges.
+    /// Create a new graph with `n` vertices and no edges.
     pub fn new(n: usize) -> Self {
         Self {
             n,
@@ -18,19 +18,9 @@ impl Graph {
         }
     }
 
-    /// Number of vertices.
-    pub fn vertex_count(&self) -> usize {
-        self.n
-    }
-
-    /// Number of edges.
-    pub fn edge_count(&self) -> usize {
-        self.adj.iter().map(|v| v.len()).sum::<usize>() / 2
-    }
-
-    /// Add an undirected edge between `u` and `v`.
+    /// Add an undirected edge between vertices `u` and `v`.
     ///
-    /// Does nothing if the edge already exists or if `u == v`.
+    /// Does nothing if `u == v` or if the edge already exists.
     pub fn add_edge(&mut self, u: usize, v: usize) {
         if u == v || u >= self.n || v >= self.n {
             return;
@@ -46,39 +36,59 @@ impl Graph {
         &self.adj[v]
     }
 
-    /// Get the degree of vertex `v`.
+    /// Number of vertices in the graph.
+    pub fn vertex_count(&self) -> usize {
+        self.n
+    }
+
+    /// Number of edges in the graph.
+    pub fn edge_count(&self) -> usize {
+        self.adj.iter().map(|a| a.len()).sum::<usize>() / 2
+    }
+
+    /// Degree of vertex `v`.
     pub fn degree(&self, v: usize) -> usize {
         self.adj[v].len()
     }
 
-    /// Check if there is an edge between `u` and `v`.
-    pub fn has_edge(&self, u: usize, v: usize) -> bool {
+    /// Maximum degree of any vertex.
+    pub fn max_degree(&self) -> usize {
+        (0..self.n).map(|v| self.degree(v)).max().unwrap_or(0)
+    }
+
+    /// Check if vertices `u` and `v` are adjacent.
+    pub fn are_adjacent(&self, u: usize, v: usize) -> bool {
         self.adj[u].contains(&v)
     }
 
-    /// Build a complete graph `K_n` with all pairwise edges.
+    /// Iterate over all vertices.
+    pub fn vertices(&self) -> std::ops::Range<usize> {
+        0..self.n
+    }
+
+    /// Create a complete graph K_n.
     pub fn complete(n: usize) -> Self {
         let mut g = Self::new(n);
-        for u in 0..n {
-            for v in (u + 1)..n {
-                g.add_edge(u, v);
+        for i in 0..n {
+            for j in (i + 1)..n {
+                g.add_edge(i, j);
             }
         }
         g
     }
 
-    /// Build a complete bipartite graph `K_{n1, n2}`.
+    /// Create a complete bipartite graph K_{n1, n2}.
     pub fn complete_bipartite(n1: usize, n2: usize) -> Self {
         let mut g = Self::new(n1 + n2);
-        for u in 0..n1 {
-            for v in n1..(n1 + n2) {
-                g.add_edge(u, v);
+        for i in 0..n1 {
+            for j in 0..n2 {
+                g.add_edge(i, n1 + j);
             }
         }
         g
     }
 
-    /// Build a cycle graph `C_n`.
+    /// Create a cycle graph C_n.
     pub fn cycle(n: usize) -> Self {
         let mut g = Self::new(n);
         for i in 0..n {
@@ -87,7 +97,7 @@ impl Graph {
         g
     }
 
-    /// Build a path graph `P_n`.
+    /// Create a path graph P_n.
     pub fn path(n: usize) -> Self {
         let mut g = Self::new(n);
         for i in 1..n {
@@ -97,30 +107,48 @@ impl Graph {
     }
 }
 
-/// A vertex coloring: maps each vertex to a color (non-negative integer).
-pub type Coloring = Vec<usize>;
-
-/// Validate that a coloring is proper (no two adjacent vertices share a color).
-pub fn is_valid_coloring(graph: &Graph, coloring: &Coloring) -> bool {
-    if coloring.len() != graph.vertex_count() {
-        return false;
-    }
-    for u in 0..graph.vertex_count() {
-        for &v in graph.neighbors(u) {
-            if u < v && coloring[u] == coloring[v] {
-                return false;
-            }
-        }
-    }
-    true
+/// A graph coloring: assigns a color (non-negative integer) to each vertex.
+#[derive(Debug, Clone)]
+pub struct Coloring {
+    colors: Vec<usize>,
 }
 
-/// Count the number of distinct colors used in a coloring.
-pub fn color_count(coloring: &Coloring) -> usize {
-    if coloring.is_empty() {
-        return 0;
+impl Coloring {
+    /// Create a new coloring from a vector of color assignments.
+    pub fn new(colors: Vec<usize>) -> Self {
+        Self { colors }
     }
-    *coloring.iter().max().unwrap() + 1
+
+    /// Get the color of vertex `v`.
+    pub fn color_of(&self, v: usize) -> usize {
+        self.colors[v]
+    }
+
+    /// Number of distinct colors used.
+    pub fn num_colors(&self) -> usize {
+        if self.colors.is_empty() {
+            return 0;
+        }
+        *self.colors.iter().max().unwrap() + 1
+    }
+
+    /// Check if this is a valid coloring of the given graph
+    /// (no two adjacent vertices share the same color).
+    pub fn is_valid(&self, graph: &Graph) -> bool {
+        for v in graph.vertices() {
+            for &u in graph.neighbors(v) {
+                if self.colors[v] == self.colors[u] {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// Get the underlying color assignments.
+    pub fn as_slice(&self) -> &[usize] {
+        &self.colors
+    }
 }
 
 #[cfg(test)]
@@ -128,71 +156,81 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_graph_new() {
-        let g = Graph::new(5);
-        assert_eq!(g.vertex_count(), 5);
+    fn test_empty_graph() {
+        let g = Graph::new(0);
+        assert_eq!(g.vertex_count(), 0);
         assert_eq!(g.edge_count(), 0);
     }
 
     #[test]
-    fn test_graph_add_edge() {
+    fn test_add_edge() {
         let mut g = Graph::new(3);
         g.add_edge(0, 1);
         assert_eq!(g.edge_count(), 1);
-        assert!(g.has_edge(0, 1));
-        assert!(g.has_edge(1, 0));
+        assert!(g.are_adjacent(0, 1));
+        assert!(g.are_adjacent(1, 0));
+        assert!(!g.are_adjacent(0, 2));
     }
 
     #[test]
-    fn test_graph_no_self_loop() {
+    fn test_no_self_loop() {
         let mut g = Graph::new(3);
         g.add_edge(0, 0);
         assert_eq!(g.edge_count(), 0);
     }
 
     #[test]
-    fn test_graph_complete() {
+    fn test_no_duplicate_edge() {
+        let mut g = Graph::new(3);
+        g.add_edge(0, 1);
+        g.add_edge(0, 1);
+        assert_eq!(g.edge_count(), 1);
+    }
+
+    #[test]
+    fn test_complete_graph() {
         let g = Graph::complete(4);
         assert_eq!(g.vertex_count(), 4);
-        assert_eq!(g.edge_count(), 6); // C(4,2) = 6
+        assert_eq!(g.edge_count(), 6);
+        assert_eq!(g.max_degree(), 3);
     }
 
     #[test]
-    fn test_graph_bipartite() {
-        let g = Graph::complete_bipartite(2, 3);
+    fn test_bipartite_graph() {
+        let g = Graph::complete_bipartite(3, 3);
+        assert_eq!(g.vertex_count(), 6);
+        assert_eq!(g.edge_count(), 9);
+    }
+
+    #[test]
+    fn test_cycle_graph() {
+        let g = Graph::cycle(5);
         assert_eq!(g.vertex_count(), 5);
-        assert_eq!(g.edge_count(), 6); // 2*3
+        assert_eq!(g.edge_count(), 5);
+        assert_eq!(g.degree(0), 2);
     }
 
     #[test]
-    fn test_graph_cycle() {
-        let g = Graph::cycle(4);
-        assert_eq!(g.edge_count(), 4);
-    }
-
-    #[test]
-    fn test_graph_path() {
+    fn test_path_graph() {
         let g = Graph::path(4);
+        assert_eq!(g.vertex_count(), 4);
         assert_eq!(g.edge_count(), 3);
+        assert_eq!(g.degree(0), 1);
+        assert_eq!(g.degree(1), 2);
     }
 
     #[test]
     fn test_valid_coloring() {
         let g = Graph::complete(3);
-        let coloring = vec![0, 1, 2];
-        assert!(is_valid_coloring(&g, &coloring));
+        let c = Coloring::new(vec![0, 1, 2]);
+        assert!(c.is_valid(&g));
+        assert_eq!(c.num_colors(), 3);
     }
 
     #[test]
     fn test_invalid_coloring() {
         let g = Graph::complete(3);
-        let coloring = vec![0, 0, 1];
-        assert!(!is_valid_coloring(&g, &coloring));
-    }
-
-    #[test]
-    fn test_color_count() {
-        assert_eq!(color_count(&vec![0, 1, 2, 1, 0]), 3);
-        assert_eq!(color_count(&vec![]), 0);
+        let c = Coloring::new(vec![0, 0, 1]);
+        assert!(!c.is_valid(&g));
     }
 }
